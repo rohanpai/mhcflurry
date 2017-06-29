@@ -1,0 +1,10 @@
+[
+    {
+        "n_models": 8,
+        "max_epochs": 10,
+        "layer_sizes": [
+            32
+        ]
+    }
+]
+

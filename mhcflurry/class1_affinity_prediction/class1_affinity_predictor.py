@@ -119,6 +119,34 @@ class Class1AffinityPredictor(object):
             max(lower for (lower, upper) in length_ranges),
             min(upper for (lower, upper) in length_ranges))
 
+
+    def merge(self, affinity_predictors=[]):
+        """ 
+        Merge multiple affinity predictors into one.  
+
+        When training MHCFlurry in parallel, the user might be left with
+        mutliple affinity predictors, merge can take in multiple affinity predictors
+        and the result will be a single ensemble.
+
+        Parameters
+        ----------
+        affinity_predictors : array
+            Affinity predictors that want to merge
+
+        """
+        self.allele_to_allele_specific_models
+        for affinity_predictor in affinity_predictors:
+            for allele in affinity_predictor.allele_to_allele_specific_models.keys():
+                if allele in self.allele_to_allele_specific_models:
+                    self.allele_to_allele_specific_models[allele] += affinity_predictor.allele_to_allele_specific_models[allele]
+                else:
+                    self.allele_to_allele_specific_models[allele] = []
+                    self.allele_to_allele_specific_models[allele] += affinity_predictor.allele_to_allele_specific_models[allele]
+            self.manifest_df = pandas.merge(self.manifest_df, affinity_predictor.manifest_df, on=['model_name', 'allele', 'config_json', 'model'], how='outer')
+        import ipdb;
+        ipdb.set_trace()
+
+
     def save(self, models_dir, model_names_to_write=None):
         """
         Serialize the predictor to a directory on disk.
@@ -272,7 +300,8 @@ class Class1AffinityPredictor(object):
             peptides,
             affinities,
             models_dir_for_save=None,
-            verbose=1):
+            verbose=1,
+            map_fn=map):
         """
         Fit one or more allele specific predictors for a single allele using a
         single neural network architecture.
@@ -313,7 +342,8 @@ class Class1AffinityPredictor(object):
             peptides=peptides,
             affinities=affinities,
             allele_pseudosequences=None,
-            verbose=verbose)
+            verbose=verbose,
+            map_fn=map_fn)
 
         if allele not in self.allele_to_allele_specific_models:
             self.allele_to_allele_specific_models[allele] = []
@@ -344,7 +374,8 @@ class Class1AffinityPredictor(object):
             peptides,
             affinities,
             models_dir_for_save=None,
-            verbose=1):
+            verbose=1,
+            map_fn=map):
         """
         Fit one or more pan-allele predictors using a single neural network
         architecture.
@@ -388,7 +419,8 @@ class Class1AffinityPredictor(object):
             peptides=peptides,
             affinities=affinities,
             allele_pseudosequences=allele_pseudosequences,
-            verbose=verbose)
+            verbose=verbose,
+            map_fn=map_fn)
 
         for (i, model) in enumerate(models):
             model_name = self.model_name("pan-class1", i)
@@ -413,7 +445,8 @@ class Class1AffinityPredictor(object):
             peptides,
             affinities,
             allele_pseudosequences,
-            verbose=1):
+            verbose=1,
+            map_fn=map):
         """
         Private helper method
         
@@ -428,10 +461,10 @@ class Class1AffinityPredictor(object):
 
         Returns
         -------
-        generator of Class1NeuralNetwork
+        array or generator of Class1NeuralNetworks
         """
         encodable_peptides = EncodableSequences.create(peptides)
-        for i in range(n_models):
+        def generate_models(i):
             logging.info("Training model %d / %d" % (i + 1, n_models))
             model = Class1NeuralNetwork(**architecture_hyperparameters)
             model.fit(
@@ -439,7 +472,8 @@ class Class1AffinityPredictor(object):
                 affinities,
                 allele_pseudosequences=allele_pseudosequences,
                 verbose=verbose)
-            yield model
+            return model
+        return map_fn(generate_models, range(n_models))
 
     def predict(self, peptides, alleles=None, allele=None, throw=True):
         """
