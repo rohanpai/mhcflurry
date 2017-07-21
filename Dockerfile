@@ -35,6 +35,7 @@ RUN /opt/conda/bin/pip install parse
 RUN /opt/conda/bin/pip install oauth2client==4.0.0
 RUN /opt/conda/bin/pip install google-api-python-client==1.5.5
 RUN /opt/conda/bin/pip install mock
+RUN /opt/conda/bin/pip install sklearn
 RUN /opt/conda/bin/pip install nose>=1.3.1
 
 ENV PATH /opt/conda/bin:$PATH
