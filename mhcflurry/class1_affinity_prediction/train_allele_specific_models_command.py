@@ -71,32 +71,7 @@ except Exception as e:
     pass
 
 
-
-def run(argv=sys.argv[1:]):
-    
-    def train(arguments):
-        n_models, hyperparameters, allele, peptides, affinities, Class1AffinityPredictor = arguments
-        predictor = Class1AffinityPredictor()
-        for model_group in range(n_models):
-            print(
-                "[%2d / %2d hyperparameters] "
-                "[%2d / %2d replicates] "
-                "[%4d / %4d alleles]: %s" % (
-                    h + 1,
-                    len(hyperparameters_lst),
-                    model_group + 1,
-                    n_models,
-                    i + 1,
-                    len(alleles), allele))
-
-            model = predictor.fit_allele_specific_predictors(
-                n_models=n_models,
-                architecture_hyperparameters=hyperparameters,
-                allele=allele,
-                peptides=train_data.peptide.values,
-                affinities=train_data.measurement_value.values)
-            
-            return model
+def run_model_selection(argv=sys.argv[1:]):
 
     args = parser.parse_args(argv)
 
@@ -128,69 +103,73 @@ def run(argv=sys.argv[1:]):
 
     print("Selected %d alleles: %s" % (len(alleles), ' '.join(alleles)))
     print("Training data: %s" % (str(df.shape)))
-
-
+    
     final_predictor = Class1AffinityPredictor()
+    best_predictors = []
     for (i, allele) in enumerate(alleles[:3]):
-        allele_data = df.ix[df.allele == allele].dropna().sample(
-            frac=1.0)
         
-        train_data, model_train_data = train_test_split(allele_data.values, 
-                test_size=0.2, 
-                random_state=42)
+        # filter the data by allele so that when we split the data
+        # it is not split unequally
+        allele_data = df.ix[df.allele == allele].dropna().sample(
+                    frac=1.0)        
+        
+        for i in range(args.ensemble_size):
 
-        all_predictors = []
-        for (h, hyperparameters) in enumerate(hyperparameters_lst):
-            print("hello------------------")
-            if "n_models" in hyperparameters:
-                n_models = hyperparameters.pop("n_models")
-            alleles = [x[0] for x in train_data]
-            peptides = [x[1] for x in train_data]
-            affinities = [x[2] for x in train_data]
-            for i in range(args.ensemble_size):
-                tmp_predictor = Class1AffinityPredictor()                
-                tmp_predictor.fit_allele_specific_predictors(
+            train_data, model_train_data = train_test_split(allele_data, 
+                test_size=0.2, 
+                random_state=42)            
+            
+            ## this is the training data
+            alleles = train_data.allele.values
+            peptides = train_data.peptide.values
+            affinities = train_data.measurement_value.values
+
+            # this is model comparison data
+            model_alleles = model_train_data.allele.values
+            model_peptides = model_train_data.peptide.values
+            model_affinities = model_train_data.measurement_value.values            
+            
+            best_score = 0
+            best_predictor = None
+
+            for (h, hyperparameters) in enumerate(hyperparameters_lst):
+                if "n_models" in hyperparameters:
+                    n_models = hyperparameters.pop("n_models")
+                    
+                tmp_model = Class1AffinityPredictor()
+                
+                # train model
+                tmp_model.fit_allele_specific_predictors(
                     n_models=1,
                     architecture_hyperparameters=hyperparameters,
                     peptides=peptides,
                     allele=allele,
                     affinities=affinities,
                     models_dir_for_save=args.out_models_dir)
-                all_predictors.append(tmp_predictor)
-        model_alleles = [x[0] for x in model_train_data]
-        model_peptides = [x[1] for x in model_train_data]
-        model_affinities = [x[2] for x in model_train_data]
 
-        best_scores_dict = {}
-        
-        for i, predictor in enumerate(all_predictors):
-            predictor_predictions = predictor.predict(alleles=model_alleles, peptides=model_peptides)
-            print(i, make_scores(np.asarray(predictor_predictions), np.asarray(model_affinities)))
-            score = make_scores(np.asarray(predictor_predictions), np.asarray(model_affinities))
-            score_sum = score['auc'] + score['f1'] + score['tau']
-            best_scores_dict[i] = score_sum
-        
-        sorted_scores = sorted(best_scores_dict.items(), key=operator.itemgetter(1), reverse=True)
-        final_predictor.merge([all_predictors[score[0]] for score in sorted_scores[:args.ensemble_size]])
-        
-        import ipdb;
-        ipdb.set_trace()
+                # compare tmp_model with best score
+                tmp_predictions = tmp_model.predict(alleles=model_alleles.tolist(), peptides=model_peptides.tolist())
+                tmp_scores = make_scores(np.asarray(tmp_predictions), np.asarray(model_affinities))
+                tmp_score = tmp_scores['auc'] + tmp_scores['f1'] + tmp_scores['tau']
+                
+                if best_predictor == None:
+                    best_predictor = tmp_model
+                if tmp_score > best_score:
+                    best_predictor = tmp_model
+                    best_score = tmp_score
 
-        '''
-        map_fn = map
-        
-        if args.use_kubeface:
-            client = kubeface.Client.from_args(args)            
-            map_fn = client.map
+            best_predictors.append(best_predictor)
+    
+    assert(len(best_predictors) == args.ensemble_size)
+    final_predictor.merge(best_predictors)
+    return final_predictor
 
-        inputs = inputs
-        results = map_fn(train, inputs)
- 
-        final_predictor = Class1AffinityPredictor()
-        final_predictor.merge(results)
-        final_predictor.save(args.out_models_dir)
-        '''
 
+
+def run():
+    model_selected_predictor = run_model_selection()
+    import ipdb;
+    ipdb.set_trace()
 
 if __name__ == '__main__':
     run()
