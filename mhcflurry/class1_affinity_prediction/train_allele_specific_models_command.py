@@ -69,6 +69,54 @@ try:
 except Exception as e:
     pass
 
+def allele_fn(arguments):
+    from sklearn.model_selection import train_test_split
+    from mhcflurry.scoring import make_scores
+    import numpy as np        
+    allele, allele_data, args, hyperparameters_lst = arguments 
+    train_data, model_train_data = train_test_split(allele_data, 
+        test_size=0.2, 
+        random_state=42)            
+    
+    ## this is the training data
+    alleles = train_data.allele.values
+    peptides = train_data.peptide.values
+    affinities = train_data.measurement_value.values
+
+    # this is model comparison data
+    model_alleles = model_train_data.allele.values
+    model_peptides = model_train_data.peptide.values
+    model_affinities = model_train_data.measurement_value.values            
+    
+    best_score = 0
+    best_predictor = None
+
+    for (h, hyperparameters) in enumerate(hyperparameters_lst):
+        if "n_models" in hyperparameters:
+            n_models = hyperparameters.pop("n_models")
+            
+        tmp_model = Class1AffinityPredictor()
+        
+        # train model
+        tmp_model.fit_allele_specific_predictors(
+            n_models=args.ensemble_size,
+            architecture_hyperparameters=hyperparameters,
+            peptides=peptides,
+            allele=allele,
+            affinities=affinities)
+
+        # compare tmp_model with best score
+        tmp_predictions = tmp_model.predict(alleles=model_alleles.tolist(), peptides=model_peptides.tolist())
+        tmp_scores = make_scores(np.asarray(tmp_predictions), np.asarray(model_affinities))
+        tmp_score = tmp_scores['auc'] + tmp_scores['f1'] + tmp_scores['tau']
+        
+        if best_predictor == None:
+            best_predictor = tmp_model
+        if tmp_score > best_score:
+            best_predictor = tmp_model
+            best_score = tmp_score
+    return best_predictor
+
 
 def run_model_selection(argv=sys.argv[1:]):
 
@@ -106,60 +154,23 @@ def run_model_selection(argv=sys.argv[1:]):
     final_predictor = Class1AffinityPredictor()
     best_predictors = []
 
-    def allele_fn(arguments):
-        from sklearn.model_selection import train_test_split
-        from mhcflurry.scoring import make_scores
-        import numpy as np        
-        allele, allele_data, args = arguments 
-        train_data, model_train_data = train_test_split(allele_data, 
-            test_size=0.2, 
-            random_state=42)            
-        
-        ## this is the training data
-        alleles = train_data.allele.values
-        peptides = train_data.peptide.values
-        affinities = train_data.measurement_value.values
 
-        # this is model comparison data
-        model_alleles = model_train_data.allele.values
-        model_peptides = model_train_data.peptide.values
-        model_affinities = model_train_data.measurement_value.values            
-        
-        best_score = 0
-        best_predictor = None
 
-        for (h, hyperparameters) in enumerate(hyperparameters_lst):
-            if "n_models" in hyperparameters:
-                n_models = hyperparameters.pop("n_models")
-                
-            tmp_model = Class1AffinityPredictor()
-            
-            # train model
-            tmp_model.fit_allele_specific_predictors(
-                n_models=1,
-                architecture_hyperparameters=hyperparameters,
-                peptides=peptides,
-                allele=allele,
-                affinities=affinities)
+    from multiprocessing import Pool
+    from multiprocessing.dummy import Pool as ThreadPool
 
-            # compare tmp_model with best score
-            tmp_predictions = tmp_model.predict(alleles=model_alleles.tolist(), peptides=model_peptides.tolist())
-            tmp_scores = make_scores(np.asarray(tmp_predictions), np.asarray(model_affinities))
-            tmp_score = tmp_scores['auc'] + tmp_scores['f1'] + tmp_scores['tau']
-            
-            if best_predictor == None:
-                best_predictor = tmp_model
-            if tmp_score > best_score:
-                best_predictor = tmp_model
-                best_score = tmp_score
-        return best_predictor
+    pool = None
 
     map_fn = map
     if args.use_kubeface:
         client = kubeface.Client.from_args(args)            
         map_fn = client.map
+    else:
+        pool = Pool(4)
+        map_fn = pool.map
+            
 
-    inputs = [ (allele, df.ix[df.allele == allele].dropna().sample(frac=1.0), args) for allele in alleles[:50]]
+    inputs = [ (allele, df.ix[df.allele == allele].dropna().sample(frac=1.0), args, hyperparameters_lst) for allele in alleles[:4]]
     results = map_fn(allele_fn, inputs)
     best_predictors = [r for r in results]
     print(best_predictors)
@@ -168,10 +179,23 @@ def run_model_selection(argv=sys.argv[1:]):
     return final_predictor
 
 
+def compare_predictors(predictor_1, predictor_2):
 
+    
+    df = pandas.read_csv("abelin_peptides.mhcflurry.csv.bz2")
+
+    def ppv(is_hit, predictions):
+        df = pandas.DataFrame({"prediction": predictions, "is_hit": is_hit})
+        return df.sort_values("prediction", ascending=True)[:int(is_hit.sum())].is_hit.mean()
+    print(ppv(df.hit.values, df.mhcflurry.values))
+    #predictor_1.predict(allele=df.allele.tolist(), peptides=df.peptide.tolist())
+    
 def run():
+    best_predictor = Class1AffinityPredictor.load()
     model_selected_predictor = run_model_selection()
+    
     print(model_selected_predictor)
+    compare_predictors(model_selected_predictor, best_predictor)
 
 if __name__ == '__main__':
     run()
