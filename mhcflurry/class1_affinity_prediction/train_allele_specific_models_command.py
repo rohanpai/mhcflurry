@@ -178,7 +178,7 @@ def run_model_selection(argv=sys.argv[1:]):
     inputs = [(allele, df.ix[df.allele == allele].dropna().sample(frac=1.0), args, hyperparameters_lst) for allele in alleles_of_interest]
     print(len(inputs))
     
-    results = map(allele_fn, inputs)
+    results = map_fn(allele_fn, inputs)
     best_predictors = [r for r in results]
     print(best_predictors)
     
