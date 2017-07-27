@@ -80,7 +80,7 @@ alleles_of_interest = ['HLA-A*01:01', 'HLA-A*02:01', 'HLA-A*02:03', 'HLA-A*03:01
 def allele_fn(arguments):
     from sklearn.model_selection import train_test_split
     from mhcflurry.scoring import make_scores
-    import numpy as np        
+    import numpy as np   
     allele, allele_data, args, hyperparameters_lst = arguments
     print(allele)
     train_data, model_train_data = train_test_split(allele_data, 
@@ -101,6 +101,7 @@ def allele_fn(arguments):
     best_predictor = None
 
     for (h, hyperparameters) in enumerate(hyperparameters_lst):
+        print(h)
         if "n_models" in hyperparameters:
             n_models = hyperparameters.pop("n_models")
             
@@ -129,7 +130,7 @@ def allele_fn(arguments):
 
 
 def run_model_selection(argv=sys.argv[1:]):
-
+    
     args = parser.parse_args(argv)
 
     configure_logging(verbose=args.verbosity > 1)
@@ -177,7 +178,7 @@ def run_model_selection(argv=sys.argv[1:]):
     inputs = [(allele, df.ix[df.allele == allele].dropna().sample(frac=1.0), args, hyperparameters_lst) for allele in alleles_of_interest]
     print(len(inputs))
     
-    results = map_fn(allele_fn, inputs)
+    results = map(allele_fn, inputs)
     best_predictors = [r for r in results]
     print(best_predictors)
     
