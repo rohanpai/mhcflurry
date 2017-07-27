@@ -163,7 +163,7 @@ def run(argv=sys.argv[1:]):
     predictions = predictor.predict_to_dataframe(
         peptides=df[args.peptide_column].values,
         alleles=df[args.allele_column].values,
-        include_individual_model_predictions=args.include_individual_model_predictions)
+        include_individual_model_predictions=args.include_individual_model_predictions, throw=False)
 
     for col in predictions.columns:
         if col not in ("allele", "peptide"):
