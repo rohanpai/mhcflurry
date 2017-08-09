@@ -171,7 +171,7 @@ def run_model_selection(argv=sys.argv[1:]):
 
     hyperparameters_lst = json.load(open(args.hyperparameters))
     random.shuffle(hyperparameters_lst)
-    hyperparameters_lst = hyperparameters_lst[:1]
+    hyperparameters_lst = hyperparameters_lst[:10]
     
     assert isinstance(hyperparameters_lst, list)
     print("Loaded hyperparameters list: %s" % str(hyperparameters_lst))
