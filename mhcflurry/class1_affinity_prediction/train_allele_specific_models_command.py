@@ -116,7 +116,7 @@ def allele_fn(arguments):
     allele, allele_data, args, hyperparameters_lst = arguments
     best_predictors = []
     map_fn = map
-        
+    pool = None
     if args.parallelize_hyperparameters:
         pool = Pool(20)
         map_fn = pool.map
@@ -160,6 +160,7 @@ def allele_fn(arguments):
     best_model = Class1AffinityPredictor()
     best_model.merge(final_best_models)
 
+    pool.terminate()
     return best_model 
 
 
@@ -170,7 +171,7 @@ def run_model_selection(argv=sys.argv[1:]):
 
     hyperparameters_lst = json.load(open(args.hyperparameters))
     random.shuffle(hyperparameters_lst)
-    hyperparameters_lst = hyperparameters_lst[:10]
+    hyperparameters_lst = hyperparameters_lst[:1]
     
     assert isinstance(hyperparameters_lst, list)
     print("Loaded hyperparameters list: %s" % str(hyperparameters_lst))
